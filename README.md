@@ -41,6 +41,17 @@ sudo pkg update
 sudo pkg install rosie
 ```
 
+### Debian / Ubuntu (apt)
+
+Pick the codename matching your distro: `noble` for Ubuntu 24.04 / Debian 13+, `jammy` for Ubuntu 22.04.
+
+```bash
+echo "deb [trusted=yes] https://matthewp.github.io/rosie/debian noble main" | \
+  sudo tee /etc/apt/sources.list.d/rosie.list
+sudo apt update
+sudo apt install rosie
+```
+
 ### Build from source
 
 #### Dependencies

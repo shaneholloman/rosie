@@ -284,14 +284,19 @@ sudo pkg install rosie
 
 ## 4. Debian/Ubuntu (apt)
 
+### Decisions
+
+- **Codenames targeted**: `jammy` (Ubuntu 22.04 LTS) and `noble` (Ubuntu 24.04 LTS / Debian trixie). Two builds because the libcurl4 → libcurl4t64 (64-bit time_t) transition between them means a single .deb won't work on both.
+- **Architecture**: amd64 only.
+- **GPG signing**: skipped. Users add `[trusted=yes]` to their sources entry. Add signing later if needed.
+- **Versioning**: `~codename1` suffix on the deb version (e.g. `0.1.4~noble1`) so both codenames coexist in one pool and sort sensibly relative to upstream.
+- **Hosting**: gh-pages branch under `/debian/`, served by GitHub Pages.
+
 ### Setup Required
 
 1. **Debian control file** in `debian/control`
-2. **GitHub Actions workflow** to build .deb
-3. **Package hosting** - options:
-   - GitHub Releases (simple, manual download)
-   - Launchpad PPA
-   - GitHub Pages apt repository
+2. **Build script** in `debian/build-package.sh`
+3. **GitHub Actions workflow** with matrix build (jammy on ubuntu-22.04, noble on ubuntu-24.04) plus a publish job using `apt-ftparchive`
 
 ### Control File Template (`debian/control`)
 

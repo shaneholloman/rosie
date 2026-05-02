@@ -120,4 +120,100 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add freebsd/
           git commit -m "Publish rosie v${{ needs.create-release.outputs.version }} for FreeBSD"
+          # Rebase to pick up any concurrent push from debian-publish (different subdir, no conflict)
+          git pull --rebase origin gh-pages
+          git push
+
+  debian-build:
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - codename: jammy
+            runner: ubuntu-22.04
+            libcurl: libcurl4
+          - codename: noble
+            runner: ubuntu-24.04
+            libcurl: libcurl4t64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libarchive-dev pkg-config
+
+      - name: Build rosie
+        run: make release
+
+      - name: Build .deb
+        run: ./debian/build-package.sh "${{ needs.create-release.outputs.version }}" "${{ matrix.codename }}" "${{ matrix.libcurl }}"
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.codename }}
+          path: rosie_*.deb
+
+  debian-publish:
+    needs: [create-release, debian-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+
+      - name: Download all .debs
+        uses: actions/download-artifact@v4
+        with:
+          path: debs/
+          pattern: deb-*
+          merge-multiple: true
+
+      - name: Install apt-utils
+        run: sudo apt-get update && sudo apt-get install -y apt-utils
+
+      - name: Build apt repo
+        run: |
+          set -e
+          mkdir -p pages/debian
+          cd pages/debian
+          for CODENAME in jammy noble; do
+            mkdir -p "pool/$CODENAME"
+            cp ../../debs/rosie_*~${CODENAME}1_amd64.deb "pool/$CODENAME/"
+          done
+          for CODENAME in jammy noble; do
+            DIST_DIR="dists/$CODENAME/main/binary-amd64"
+            mkdir -p "$DIST_DIR"
+            apt-ftparchive packages "pool/$CODENAME" > "$DIST_DIR/Packages"
+            gzip -kf "$DIST_DIR/Packages"
+            apt-ftparchive \
+              -o APT::FTPArchive::Release::Origin=rosie \
+              -o APT::FTPArchive::Release::Label=rosie \
+              -o APT::FTPArchive::Release::Suite="$CODENAME" \
+              -o APT::FTPArchive::Release::Codename="$CODENAME" \
+              -o APT::FTPArchive::Release::Architectures=amd64 \
+              -o APT::FTPArchive::Release::Components=main \
+              release "dists/$CODENAME" > "dists/$CODENAME/Release"
+          done
+
+      - name: Upload .debs to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: debs/*.deb
+
+      - name: Commit and push gh-pages
+        run: |
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add debian/
+          git commit -m "Publish rosie v${{ needs.create-release.outputs.version }} for Debian/Ubuntu"
+          # Rebase to pick up any concurrent push from freebsd job (different subdir, no conflict)
+          git pull --rebase origin gh-pages
           git push
