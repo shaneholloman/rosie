@@ -23,6 +23,24 @@ yay -S rosie
 paru -S rosie
 ```
 
+### FreeBSD (pkg)
+
+Add the rosie repository, then install:
+
+```bash
+sudo mkdir -p /usr/local/etc/pkg/repos
+cat <<'EOF' | sudo tee /usr/local/etc/pkg/repos/rosie.conf
+rosie: {
+  url: "https://matthewp.github.io/rosie/freebsd/",
+  enabled: yes,
+  signature_type: "none"
+}
+EOF
+
+sudo pkg update
+sudo pkg install rosie
+```
+
 ### Build from source
 
 #### Dependencies
