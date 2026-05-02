@@ -163,35 +163,9 @@ yay -S rosie
 paru -S rosie
 ```
 
-### AUR Setup Instructions (TODO)
+### Status
 
-The PKGBUILD template and release workflow are ready. Complete these steps to enable AUR publishing:
-
-**1. Register `rosie` on AUR:**
-- Go to https://aur.archlinux.org/login (create account if needed)
-- Go to https://aur.archlinux.org/pkgsubmit
-- Submit package name: `rosie`
-
-**2. Generate SSH key for AUR:**
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/aur_rosie -N ""
-cat ~/.ssh/aur_rosie.pub
-```
-
-**3. Add public key to AUR:**
-- Go to https://aur.archlinux.org/account/YourUsername/edit
-- Paste the public key in "SSH Public Key" field
-
-**4. Add private key to GitHub:**
-- Go to https://github.com/matthewp/rosie/settings/secrets/actions
-- New secret: `AUR_SSH_KEY`
-- Value: contents of `~/.ssh/aur_rosie` (the private key)
-
-**5. Test by creating a new release tag:**
-```bash
-git tag v0.1.1
-git push --tags
-```
+Live as of v0.1.2. Initial AUR repo bootstrap was done with `aur/publish-initial.sh`; subsequent releases are auto-published by the GitHub Actions workflow via `KSXGitHub/github-actions-deploy-aur@v4.1.3`.
 
 ---
 
@@ -340,29 +314,25 @@ sudo apt-get install -f  # Install dependencies
 
 ## Implementation Plan
 
-### Phase 0: Basic CI
-- [ ] Create `.github/workflows/ci.yaml`
-- [ ] Build on Linux (ubuntu-latest)
-- [ ] Build on macOS (macos-latest)
-- [ ] Run `rosie --version` and `rosie help` to verify
-- [ ] Trigger on push and PR
+### Phase 0: Basic CI ✅
+- [x] Create `.github/workflows/ci.yaml`
+- [x] Build on Linux (ubuntu-latest)
+- [x] Build on macOS (macos-latest)
 
 ### Phase 1: Foundation
-- [ ] Update Makefile to support `DESTDIR` and `PREFIX`
+- [x] Update Makefile to support `DESTDIR` and `PREFIX`
 - [ ] Create `debian/control` template
 - [ ] Create `freebsd-package/` directory with templates
-- [ ] Create `.github/workflows/release.yaml`
+- [x] Create `.github/workflows/release.yaml`
 
 ### Phase 2: GitHub Actions - Linux
 - [ ] Build Linux binary
 - [ ] Build .deb package
 - [ ] Upload to GitHub Releases
 
-### Phase 3: GitHub Actions - macOS
-- [ ] Create `matthewp/homebrew-rosie` repository
-- [ ] Build macOS binary (arm64)
-- [ ] Auto-update Homebrew formula
-- [ ] Upload to GitHub Releases
+### Phase 3: GitHub Actions - macOS (Homebrew) ✅
+- [x] Create `matthewp/homebrew-rosie` repository
+- [x] Auto-update Homebrew formula on tag (builds from source on user's Mac)
 
 ### Phase 4: GitHub Actions - FreeBSD
 - [ ] Set up FreeBSD VM build
@@ -370,13 +340,14 @@ sudo apt-get install -f  # Install dependencies
 - [ ] Publish to GitHub Pages
 - [ ] Upload to GitHub Releases
 
-### Phase 5: AUR
-- [ ] Register `rosie` on AUR
-- [ ] Set up SSH key for AUR
-- [ ] Auto-generate and push PKGBUILD
+### Phase 5: AUR ✅
+- [x] Register `rosie` on AUR (initial push via `aur/publish-initial.sh`)
+- [x] Set up SSH key for AUR (CI key separate from personal)
+- [x] Auto-generate and push PKGBUILD
 
 ### Phase 6: Documentation
-- [ ] Update README with installation instructions for each platform
+- [x] README install instructions for Homebrew + AUR
+- [ ] README install instructions for FreeBSD + Debian once shipped
 - [ ] Add man page? (`rosie.1.scd` with scdoc)
 
 ---
@@ -410,8 +381,8 @@ rosie/
 
 ## Open Questions
 
-1. **macOS architectures**: arm64 only, or also x86_64?
+1. ~~**macOS architectures**: arm64 only, or also x86_64?~~ → Moot. Homebrew formula builds from source, works on both.
 2. ~~**Debian hosting**: GitHub Releases only, or also a proper apt repo on GitHub Pages?~~ → Proper apt repo on GitHub Pages (GitHub Packages doesn't support apt/deb)
 3. **Man page**: Should we add one? Would need `scdoc` as build dependency.
 4. **Linux architectures**: amd64 only, or also arm64?
-5. **Version tagging**: Do we use `v0.1.0` format?
+5. ~~**Version tagging**: Do we use `v0.1.0` format?~~ → Yes, `vMAJOR.MINOR.PATCH`.
