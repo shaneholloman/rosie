@@ -7,15 +7,17 @@
 #include "agent.h"
 #include "util.h"
 
-#define ROSIE_VERSION "0.1.0"
+#define ROSIE_VERSION "0.2.0"
 
 static void print_usage(const char *prog) {
     printf("rosie - A robot helper for agent skills v%s\n\n", ROSIE_VERSION);
     printf("Usage: %s <command> [options] [arguments]\n\n", prog);
     printf("Commands:\n");
-    printf("  install <owner/repo> [skill]  Install skills from a GitHub repository\n");
+    printf("  install [owner/repo] [skill]  Install skills from a GitHub repository\n");
+    printf("                                With no args, reinstalls from .agents/rosie.lock\n");
+    printf("  update [skill-name]           Re-resolve lockfile entries; reinstall those that changed\n");
     printf("  remove <skill-name>           Remove an installed skill\n");
-    printf("  list <owner/repo>             List skills in a repository\n");
+    printf("  list [owner/repo]             List skills in a repo (or installed skills if no arg)\n");
     printf("  agents                  List detected agents\n");
     printf("  help                    Show this help message\n");
     printf("\nOptions:\n");
@@ -107,9 +109,17 @@ static int cmd_install(int argc, char **argv, bool list_only) {
     }
 
     if (optind >= argc) {
-        log_error("Missing package specification");
-        printf("Usage: rosie %s <owner/repo> [skill-name]\n", list_only ? "list" : "install");
-        return 1;
+        // Zero-arg list: show what's recorded in the project's lockfile.
+        if (list_only) {
+            return list_installed_skills();
+        }
+        // Zero-arg install: reinstall everything in .agents/rosie.lock.
+        opts.agent_names = agent_count > 0 ? agent_names : NULL;
+        opts.agent_count = agent_count;
+        if (download_init() != 0) return 1;
+        int result = install_from_lockfile(&opts);
+        download_cleanup();
+        return result;
     }
 
     opts.spec = argv[optind];
@@ -124,6 +134,46 @@ static int cmd_install(int argc, char **argv, bool list_only) {
 
     int result = install_package(&opts);
 
+    download_cleanup();
+    return result;
+}
+
+static int cmd_update(int argc, char **argv) {
+    static struct option long_options[] = {
+        {"agent",   required_argument, 0, 'a'},
+        {"yes",     no_argument,       0, 'y'},
+        {"verbose", no_argument,       0, 'v'},
+        {"help",    no_argument,       0, 'h'},
+        {0, 0, 0, 0}
+    };
+
+    InstallOptions opts = {0};
+    const char *agent_names[32];
+    int agent_count = 0;
+
+    int opt;
+    optind = 1;
+    while ((opt = getopt_long(argc, argv, "a:yvh", long_options, NULL)) != -1) {
+        switch (opt) {
+            case 'a':
+                if (agent_count < 32) agent_names[agent_count++] = optarg;
+                break;
+            case 'y': opts.yes = true; break;
+            case 'v': g_verbose = true; break;
+            case 'h':
+                printf("Usage: rosie update [skill-name]\n");
+                printf("  Re-resolve and reinstall lockfile entries that have changed upstream.\n");
+                return 0;
+            default: return 1;
+        }
+    }
+
+    const char *only_skill = (optind < argc) ? argv[optind] : NULL;
+    opts.agent_names = agent_count > 0 ? agent_names : NULL;
+    opts.agent_count = agent_count;
+
+    if (download_init() != 0) return 1;
+    int result = update_skills(&opts, only_skill);
     download_cleanup();
     return result;
 }
@@ -202,6 +252,8 @@ int main(int argc, char **argv) {
 
     if (strcmp(command, "install") == 0) {
         return cmd_install(argc, argv, false);
+    } else if (strcmp(command, "update") == 0) {
+        return cmd_update(argc, argv);
     } else if (strcmp(command, "remove") == 0) {
         return cmd_remove(argc, argv);
     } else if (strcmp(command, "list") == 0) {

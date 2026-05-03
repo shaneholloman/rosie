@@ -93,15 +93,17 @@ rosie install owner/repo
 ```
 
 This will:
-1. Download the repository as a tarball
-2. Find all skills (directories containing `SKILL.md`)
-3. Detect which agents you have installed
-4. Copy skills to each agent's skills directory
+1. Resolve the latest semver tag for the repo (or fall back to the default branch if none)
+2. Download the repository as a tarball
+3. Find all skills (directories containing `SKILL.md`)
+4. Detect which agents you have installed
+5. Copy skills to each agent's skills directory
+6. Record what was installed in `.agents/rosie.lock`
 
 ### Examples
 
 ```bash
-# Install to all detected agents
+# Install to all detected agents (auto-resolves to latest semver tag)
 rosie install vercel-labs/agent-skills
 
 # Install a specific skill from a repo
@@ -111,11 +113,20 @@ rosie install anthropics/skills pdf
 rosie install owner/repo -a claude
 rosie install owner/repo -a claude -a cursor
 
-# Install a specific branch or tag
+# Pin to a specific branch or tag (recorded as "pinned" in the lockfile)
 rosie install owner/repo@v1.0.0
 rosie install owner/repo@develop
 
-# List skills without installing
+# Reinstall everything in .agents/rosie.lock (e.g. on a fresh clone)
+rosie install
+
+# Update lockfile entries — auto entries advance to latest, pinned entries
+# refresh their SHA only
+rosie update
+rosie update slack-gif-creator       # Update one skill
+
+# List skills (no arg = installed in this project; with arg = available in repo)
+rosie list
 rosie list owner/repo
 
 # Remove an installed skill
@@ -128,6 +139,19 @@ rosie install owner/repo -y
 # See detected agents
 rosie agents
 ```
+
+### Lockfile
+
+When you install a skill locally, rosie records what it installed in `.agents/rosie.lock`:
+
+```
+slack-gif-creator anthropics/skills main 5128e1865d670f5d6c9cef000e6dfc4e951fb5b9 2026-05-02T14:32:18Z auto
+theme-factory     anthropics/skills v1.0.0 a1b2c3d4e5f6789abcdef0123456789abcdef012  2026-05-02T14:35:01Z pin
+```
+
+One line per skill: `<name> <source> <ref> <sha> <installed-at> <pin|auto>`. The lockfile is small, line-oriented (so it diffs cleanly), and meant to be checked into git.
+
+`auto` entries were installed without an explicit ref — `rosie update` will advance them to the highest semver tag upstream. `pin` entries were installed with an explicit `@ref` and `rosie update` will leave the ref alone, only refreshing the SHA.
 
 ### Options
 
@@ -244,11 +268,13 @@ rosie/
 ├── Makefile
 └── src/
     ├── main.c        # CLI entry point
-    ├── install.c     # Install orchestration
+    ├── install.c     # Install / update / remove orchestration
     ├── download.c    # HTTP fetching (libcurl)
+    ├── resolve.c     # Latest-tag and SHA resolution (smart-HTTP)
     ├── archive.c     # Tarball extraction (libarchive)
     ├── skill.c       # SKILL.md discovery and parsing
     ├── agent.c       # Agent detection
+    ├── lockfile.c    # .agents/rosie.lock read/write
     └── util.c        # Path/string helpers
 ```
 

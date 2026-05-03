@@ -6,112 +6,160 @@ Currently, skills are installed to flat, unversioned paths:
 .agents/skills/my-skill/
 ```
 
-Reinstalling a skill overwrites whatever was there before. The git ref used to fetch the skill (`owner/repo@v1.0.0`) is not persisted anywhere.
+Reinstalling a skill overwrites whatever was there before. The git ref used to fetch the skill (`owner/repo@v1.0.0`) is not persisted anywhere. Re-running `rosie install owner/repo` always pulls `main`, even if the user wanted whatever was current six months ago.
 
-This document explores adding version awareness to rosie.
+This document describes adding version awareness to rosie via a small, line-oriented lockfile.
 
-## Do we need a lockfile?
+## Why a lockfile (and not version-suffixed paths)
 
-**No, for local installs.** Local skills are copied into the project tree (`.agents/skills/`) and are intended to be committed to version control. The checked-in files *are* the source of truth — the actual skill content is right there in git. A lockfile tracking "this came from v1.0.0" would be redundant metadata; `git log` already tells you when it changed and `git diff` shows what changed.
+An earlier draft of this design encoded the version into the directory name (`.agents/skills/my-skill@v1.0.0/`). That has a fatal flaw: rosie isn't the only tool installing into `.agents/skills/`. The README itself lists seven alternatives. If rosie writes `my-skill@v1.0.0/` and another tool writes `my-skill/`, the agent sees two skills, and the user gets duplication or whichever symlink last won.
 
-This is different from npm/pip where packages live in an ignored `node_modules/` or virtualenv. Skills are checked-in source, not ephemeral dependencies.
+**The convention everyone agrees on is `.agents/skills/<skill-name>/`.** Rosie should follow it. Per-install metadata — source repo, resolved ref, SHA — lives in a separate file that other tools never look at.
 
-**Maybe, for global installs.** Global skills (`~/.claude/skills/`, etc.) aren't in any repo, so there's no record of where they came from. A lightweight manifest at `~/.agents/rosie.json` could help with `rosie update` for global skills. But this is a weaker case — global installs are personal setup, not reproducible environments.
+A lockfile also gives us:
 
-## Goals
+- **Reproducibility** when skills are gitignored. `rosie install` (no args) can read the lockfile and rebuild the tree from scratch, the same shape as `npm install`.
+- **A clean target for `rosie update`.** Without a record of what was installed, "update everything" has nothing to iterate over.
+- **Force-re-tag protection.** Storing the resolved SHA alongside the ref lets us notice when `v1.0.0` upstream silently changed.
 
-1. **Version in the path** - Make it visible which version of a skill is installed by encoding the ref in the directory name.
-2. **Install specific versions** - `rosie install owner/repo@v2.0.0` should produce a meaningfully different result than `@v1.0.0`.
-3. **Upgrade/downgrade** - Install a new version and update symlinks, with the old version still in git history.
+Skill directories themselves stay at the conventional path. Whether they're committed or gitignored is the user's choice — the lockfile (always committed) supports both modes.
 
-## Directory Structure
+## Lockfile
 
-Version suffix style — the ref is encoded in the directory name:
+### Location
 
-```
-.agents/skills/my-skill@v1.0.0/
-    SKILL.md
-    scripts/
-.claude/skills/my-skill -> ../../.agents/skills/my-skill@v1.0.0
-```
+`.agents/rosie.lock` — alongside the skills directory it describes.
 
-Only one version exists on disk at a time. Installing a new version removes the old directory and creates a new one. Symlinks in agent dirs always use the clean name (`my-skill`), so agents never need to care about versions.
+Always checked into git. Small (one line per installed skill), human-readable, line-oriented for clean diffs.
 
-## Version Resolution
+### Format
 
-When installing, the version is resolved in this order:
-
-### 1. Explicit ref: `rosie install owner/repo@v1.0.0`
-
-Use exactly what the user asked for.
+One skill per line. Fields are space-separated and positional:
 
 ```
-.agents/skills/my-skill@v1.0.0/
+<skill-name> <source> <ref> <sha> <installed-at>
 ```
 
-### 2. No ref, repo has tags: `rosie install owner/repo`
-
-Query the repo for the latest tag and use that.
+Example:
 
 ```
-.agents/skills/my-skill@v2.3.0/
+pdf anthropics/skills v1.2.0 a1b2c3d4e5f6789abcdef0123456789abcdef012 2026-05-02T14:32:18Z
+react-best-practices vercel-labs/agent-skills main 0123456789abcdef0123456789abcdef01234567 2026-05-02T14:35:01Z
+my-skill owner/repo v0.9.0 fedcba9876543210fedcba9876543210fedcba98 2026-05-01T09:11:44Z
 ```
 
-This is the common case — most users will just `rosie install owner/repo` and expect to get the latest stable version.
+Field rules:
 
-### 3. No ref, repo has no tags: `rosie install owner/repo`
+- **skill-name** — must match an installed directory under `.agents/skills/`. No spaces (already enforced by directory naming).
+- **source** — `owner/repo` form. The thing that follows `rosie install`.
+- **ref** — the resolved ref: a tag (`v1.2.0`), branch (`main`), or `-` if the source was a bare commit.
+- **sha** — full 40-char git SHA the tarball was extracted from.
+- **installed-at** — ISO 8601 UTC timestamp.
 
-Fall back to `main` with no version in the path.
+A leading `#` makes a comment line; blank lines are ignored. Both are preserved on rewrite when feasible (nice-to-have, not required for v1).
+
+Parsing is `sscanf("%s %s %s %s %s", ...)` plus a length check on the SHA. ~30 lines of C to read and write.
+
+We deliberately do **not** use JSON, TOML, or YAML. The schema is too small to justify a parser dep, and a line-per-skill format diffs perfectly: adding/removing/upgrading a skill touches exactly one line.
+
+## Version resolution
+
+When the user runs `rosie install owner/repo` (no `@ref`):
+
+1. Run `git ls-remote --tags https://github.com/owner/repo` to list tags.
+2. Filter to semver-shaped tags (`v?\d+\.\d+\.\d+(-\S*)?`).
+3. Pick the highest by semver ordering.
+4. If any qualify → use it. If none do → fall back to `main`.
+
+When the user runs `rosie install owner/repo@<ref>`:
+
+- Use `<ref>` exactly as given. No "latest" lookup.
+
+In both cases, after the tarball is downloaded we resolve the ref to a SHA (either via `git ls-remote` or by inspecting the tarball metadata) and record both in the lockfile.
+
+We do not use the GitHub Releases API — it only returns *formal* releases, which most skill repo authors won't bother creating. We do not use the GitHub tags API either — `git ls-remote` is unauthenticated, has no rate limit, and works for any git remote (not just GitHub) if we ever care.
+
+Resolved version is logged so the auto-latest behavior isn't invisible:
 
 ```
-.agents/skills/my-skill/
+$ rosie install anthropics/skills
+Resolving anthropics/skills... v1.2.0
+Downloading...
 ```
 
-The unversioned path is a clear signal: this skill isn't pinned to anything specific. It's a snapshot of `main` at the time of install.
+## Impact on commands
 
-## Impact on Commands
+### `rosie install owner/repo[@ref] [skill]`
 
-### `rosie install owner/repo@v1.0.0`
+Existing behavior, plus:
 
-- Download the tarball at that ref (already works)
-- Resolve version → `v1.0.0`
-- Store to `.agents/skills/my-skill@v1.0.0/`
-- If an older version dir exists (`my-skill@v0.9.0/` or `my-skill/`), remove it
-- Create/update symlinks in agent dirs pointing to the new path
+1. Resolve the ref (as above).
+2. After successful install of each skill, write/update its line in `.agents/rosie.lock`.
+3. If a lockfile entry already exists for that skill, replace it (this is the upgrade path).
 
-### `rosie install owner/repo` (no ref)
+### `rosie install` (no args)
 
-- Query repo for latest tag
-- If tags exist: resolve to latest tag, install as `my-skill@v2.3.0/`
-- If no tags: download `main`, install as `my-skill/` (unversioned)
+New form. Reads `.agents/rosie.lock` and re-installs each entry at its recorded ref. Used when skills are gitignored, or when cloning fresh.
 
-### `rosie remove skill-name`
+Pinned to the exact ref recorded in the lockfile — does not re-resolve "latest." That's what `update` is for.
 
-- Find the skill directory (with or without version suffix) by matching on skill name
-- Remove the directory and symlinks from agent dirs
+### `rosie update [skill]`
 
-### `rosie update [skill-name]`
+New command. For each lockfile entry (or the named skill):
 
-Possible future command. For local installs, it's essentially `rosie install` again — run the same resolution logic, and if the resolved version is different from what's on disk, replace it. The diff shows up in `git status`.
+1. Re-resolve the source's "latest" ref (only meaningful if the original ref was a tag or `main`; an explicit pinned ref is left alone unless the user says otherwise).
+2. If the resolved ref or SHA differs from what's in the lockfile, reinstall.
+3. Update the lockfile.
 
-## Implementation Phases
+If skills are committed, the upgrade shows up as a normal diff in `git status`.
 
-### Phase 1: Latest tag resolution
+### `rosie remove <skill>`
 
-- Query GitHub API for latest tag when no `@ref` is given
-- Fall back to `main` if no tags exist
-- Pass the resolved ref through to the install step
+Existing behavior, plus: remove the corresponding line from the lockfile.
 
-### Phase 2: Versioned directories
+Use the lockfile as the authoritative list of what rosie installed. If a skill exists on disk but has no lockfile entry, leave it alone — it was installed by something else.
 
-- Update `install_to_canonical()` to include the ref in the path (when a version is resolved)
-- On install, find and remove any existing directory for the same skill (regardless of version suffix)
-- Update symlink creation to point to the versioned path
-- Update `rosie remove` to match by skill name prefix
+### `rosie list` (local)
 
-## Open Questions
+Optional small win: when run inside a project with a lockfile, show installed skills with their version and source. (`rosie list owner/repo` keeps its current meaning of "list skills available in a remote repo.")
 
-1. **Tag format** — Do we only look for semver-style tags (`v1.0.0`)? Or any tag? Some repos use non-semver tags.
-2. **"Latest" tag heuristic** — Sort tags by semver? By date? Use GitHub's "latest release" API?
-3. **GitHub API auth** — Unauthenticated API calls are rate-limited (60/hour). Should we support a `GITHUB_TOKEN` env var for higher limits?
-4. **Global installs** — Should versioned directories also apply to global installs? Or is it only useful for local (where files are committed)?
+## Multi-skill repos
+
+A single `owner/repo@v1.0.0` can ship several skills. They get separate lockfile entries, each with the same source/ref/sha. This is intentional — the entries are per-skill so `rosie remove pdf` is unambiguous, but the shared SHA makes it clear they came from one upstream snapshot.
+
+`rosie update` on one skill of a multi-skill repo upgrades only that skill's entry. We do not try to be clever about "siblings should move together," because the user might want to pin one and float another.
+
+## Implementation phases
+
+### Phase 1 — Lockfile read/write, recorded on install
+
+- Add `lockfile.c`/`lockfile.h` with `lockfile_load`, `lockfile_save`, `lockfile_upsert`, `lockfile_remove`.
+- After a successful install, capture source/ref/sha and upsert.
+- After a successful remove, drop the entry.
+- No behavior change for users yet beyond the lockfile appearing.
+
+### Phase 2 — Latest-tag resolution
+
+- Add a `resolve_latest_tag(spec)` that shells out to `git ls-remote --tags` (or uses libcurl + the smart-HTTP info/refs endpoint, decide during implementation).
+- Wire into `install_package`: when `spec->ref` is the implicit `"main"` default and the user didn't supply `@ref`, run resolution first.
+- Distinguishing "user didn't pass @ref" from "user explicitly said @main" requires a small change to `package_spec_parse` (e.g., a `ref_explicit` flag).
+
+### Phase 3 — `rosie install` (no args) and `rosie update`
+
+- New code path in `cmd_install` for the zero-arg case: iterate lockfile, call install per entry with the recorded ref.
+- New `cmd_update` mirroring `cmd_install` shape, with re-resolution and a "no changes" no-op path.
+
+### Phase 4 — Tarball ref bug fix (prerequisite for tags)
+
+- `build_tarball_url` currently always uses `archive/refs/heads/<ref>` — this 404s for tags. Need to either try heads then tags, or use `git ls-remote` results to know which.
+- This is a precondition for Phase 1 actually working with `@v1.0.0` style installs.
+
+(Phase 4 is logically first but called out separately because it's a pre-existing bug, not new versioning work.)
+
+## Open questions
+
+1. **Pre-release tags** — `v1.0.0-rc1` and `v1.0.0-beta` qualify as semver. Should "latest" skip pre-releases by default? (Probably yes, with a `--pre` flag if we ever need it.)
+2. **Non-semver tags** — what about repos that tag with `release-2026-04`? Currently we'd ignore them for "latest" and require explicit `@ref`. Acceptable?
+3. **Lockfile during `rosie install owner/repo` when an unrelated skill is in the lockfile** — we just upsert the one we touched, leave others alone. Confirm this is the right read.
+4. **Global installs** — same lockfile mechanism at `~/.agents/rosie.lock`? Or skip lockfile for global since reproducibility matters less? Lean toward "yes, same mechanism" for consistency.
+5. **`git` as a runtime dependency** — Phase 2 uses `git ls-remote`. We don't currently depend on git at runtime. Alternative is implementing the smart-HTTP info/refs request via libcurl directly (~50 lines). Pick during Phase 2.
