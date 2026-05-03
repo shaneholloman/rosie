@@ -9,11 +9,23 @@ typedef struct {
     char *repo;
     char *ref;            // Branch or tag, defaults to "main" if not given
     bool ref_explicit;    // true if user passed @ref; false if defaulted
+    // For hand-authored skills checked into the same repo. When true, owner/
+    // repo/ref are unused and local_path holds a "./<rel>" path relative to
+    // the repo root.
+    bool is_local;
+    char *local_path;
 } PackageSpec;
 
-// Parse "owner/repo" or "owner/repo@ref" into PackageSpec
+// Parse "owner/repo[@ref]" or a local path (starting with ./, ../, /, ~/, or
+// equal to "."), or a "file://<rel-path>" lockfile source, into a PackageSpec.
 PackageSpec *package_spec_parse(const char *spec);
 void package_spec_free(PackageSpec *spec);
+
+// Source-field helpers (operate on the lockfile's `source` column).
+// A "file://" prefix marks an entry as a local symlinked skill rather than
+// an owner/repo download.
+bool source_is_local(const char *source);
+const char *source_local_path(const char *source);
 
 typedef enum {
     REF_KIND_BRANCH,   // archive/refs/heads/<ref>.tar.gz

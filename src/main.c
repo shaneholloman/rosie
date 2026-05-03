@@ -13,7 +13,9 @@ static void print_usage(const char *prog) {
     printf("rosie - A robot helper for agent skills v%s\n\n", ROSIE_VERSION);
     printf("Usage: %s <command> [options] [arguments]\n\n", prog);
     printf("Commands:\n");
-    printf("  install [owner/repo] [skill]  Install skills from a GitHub repository\n");
+    printf("  install [<owner/repo>|<./path>] [skill]\n");
+    printf("                                Install skills from a GitHub repository, or symlink a\n");
+    printf("                                local directory (./path, /path, ~/path) into .agents/skills/.\n");
     printf("                                With no args, reinstalls from .agents/rosie.lock\n");
     printf("  update [skill-name]           Re-resolve lockfile entries; reinstall those that changed\n");
     printf("  remove <skill-name>           Remove an installed skill\n");
@@ -31,6 +33,7 @@ static void print_usage(const char *prog) {
     printf("  %s install anthropics/skills pdf\n", prog);
     printf("  %s install owner/repo -a claude -a cursor\n", prog);
     printf("  %s install owner/repo@v1.0.0\n", prog);
+    printf("  %s install ./skills/my-custom-skill   # symlink a local skill\n", prog);
     printf("  %s install                    # reinstall from .agents/rosie.lock\n", prog);
     printf("  %s update                     # update all lockfile entries\n", prog);
     printf("  %s update slack-gif-creator   # update one skill\n", prog);

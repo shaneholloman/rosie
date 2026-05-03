@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <limits.h>
 #include <sys/stat.h>
 
 // Local install storage directory
@@ -111,6 +112,171 @@ static char *install_to_canonical(const Skill *skill) {
     return canonical_dir;
 }
 
+// Link a hand-authored skill that already lives in the working tree at
+// canonical_rel (a "./<rel>" path under the current working directory).
+// Creates the canonical symlink at .agents/skills/<name> pointing at the
+// user's directory, mirrors that into each target agent, and writes a
+// "file://<canonical_rel>" lockfile entry. Used by install_package() when the
+// CLI arg is a local path, and by install_from_lockfile() when reinstalling
+// a file:// entry on a fresh clone.
+static int install_local(const char *canonical_rel, const InstallOptions *opts) {
+    if (opts->global) {
+        log_error("Local skills cannot be installed globally; drop --global");
+        return -1;
+    }
+
+    if (!dir_exists(canonical_rel)) {
+        log_error("Local skill directory not found: %s", canonical_rel);
+        return -1;
+    }
+
+    char *skill_md = path_join(canonical_rel, "SKILL.md");
+    Skill *skill = parse_skill_file(skill_md);
+    spm_free(skill_md);
+    if (!skill || !skill->name) {
+        log_error("No valid SKILL.md in %s", canonical_rel);
+        if (skill) skill_free(skill);
+        return -1;
+    }
+
+    if (opts->skill_name && strcmp(skill->name, opts->skill_name) != 0) {
+        log_error("Skill name mismatch: SKILL.md declares '%s', expected '%s'",
+                  skill->name, opts->skill_name);
+        skill_free(skill);
+        return -1;
+    }
+
+    log_info("Linking local skill: %s (%s)", skill->name, canonical_rel);
+
+    AgentList *agents;
+    if (opts->agent_names && opts->agent_count > 0) {
+        agents = agents_from_names(opts->agent_names, opts->agent_count, false);
+    } else {
+        agents = detect_agents(false);
+    }
+    if (agents->count == 0) {
+        log_error("No agents detected. Use --agent to specify target agent.");
+        skill_free(skill);
+        agent_list_free(agents);
+        return -1;
+    }
+
+    if (opts->list_only) {
+        log_info("Found 1 skill:");
+        skill_print(skill);
+        skill_free(skill);
+        agent_list_free(agents);
+        return 0;
+    }
+
+    if (!opts->yes) {
+        printf("\nLink %s -> %s/%s for %d agent(s)? [Y/n] ",
+               canonical_rel, LOCAL_SKILLS_DIR, skill->name, agents->count);
+        fflush(stdout);
+        char response[16];
+        if (fgets(response, sizeof(response), stdin)) {
+            char *trimmed = str_trim(response);
+            if (trimmed[0] != '\0' && trimmed[0] != 'y' && trimmed[0] != 'Y') {
+                log_info("Cancelled.");
+                skill_free(skill);
+                agent_list_free(agents);
+                return 0;
+            }
+        }
+    }
+
+    if (make_dirs(LOCAL_SKILLS_DIR) != 0) {
+        log_error("Cannot create directory: %s", LOCAL_SKILLS_DIR);
+        skill_free(skill);
+        agent_list_free(agents);
+        return -1;
+    }
+
+    // The canonical symlink lives at .agents/skills/<name>. Its target is the
+    // user's directory, expressed relative to .agents/skills/ — so we strip
+    // the "./" from canonical_rel and prefix "../.." to climb back to repo root.
+    char *canonical_link = path_join(LOCAL_SKILLS_DIR, skill->name);
+    const char *rel_for_link = canonical_rel;
+    if (rel_for_link[0] == '.' && rel_for_link[1] == '/') rel_for_link += 2;
+    char *canonical_target;
+    if (rel_for_link[0] == '\0' || strcmp(rel_for_link, ".") == 0) {
+        canonical_target = str_dup("../..");
+    } else {
+        canonical_target = path_join("../..", rel_for_link);
+    }
+
+    struct stat st;
+    if (lstat(canonical_link, &st) == 0) {
+        if (S_ISLNK(st.st_mode)) {
+            char buf[PATH_MAX];
+            ssize_t n = readlink(canonical_link, buf, sizeof(buf) - 1);
+            if (n < 0) n = 0;
+            buf[n] = '\0';
+
+            if (n > 0 && strcmp(buf, canonical_target) == 0) {
+                log_debug("Canonical symlink already correct: %s", canonical_link);
+            } else if (unlink(canonical_link) != 0 ||
+                       symlink(canonical_target, canonical_link) != 0) {
+                log_error("Failed to update symlink: %s", canonical_link);
+                spm_free(canonical_link);
+                spm_free(canonical_target);
+                skill_free(skill);
+                agent_list_free(agents);
+                return -1;
+            }
+        } else {
+            log_error("Refusing to overwrite existing non-symlink at %s",
+                      canonical_link);
+            spm_free(canonical_link);
+            spm_free(canonical_target);
+            skill_free(skill);
+            agent_list_free(agents);
+            return -1;
+        }
+    } else if (symlink(canonical_target, canonical_link) != 0) {
+        log_error("Failed to create symlink: %s -> %s",
+                  canonical_link, canonical_target);
+        spm_free(canonical_link);
+        spm_free(canonical_target);
+        skill_free(skill);
+        agent_list_free(agents);
+        return -1;
+    }
+
+    log_info("  %s -> %s", canonical_link, canonical_target);
+
+    int linked = 0;
+    for (int j = 0; j < agents->count; j++) {
+        if (install_skill_local(skill, &agents->agents[j], canonical_link) == 0) {
+            linked++;
+        }
+    }
+    log_info("    symlink -> %d agent(s)", linked);
+
+    Lockfile *lf = lockfile_load(LOCAL_AGENTS_DIR);
+    char *now = lockfile_now_iso8601();
+    size_t source_len = strlen("file://") + strlen(canonical_rel) + 1;
+    char *source = spm_malloc(source_len);
+    snprintf(source, source_len, "file://%s", canonical_rel);
+
+    lockfile_upsert(lf, skill->name, source, "-", "-", now, true);
+
+    if (lockfile_save(lf) != 0) {
+        log_error("Warning: failed to write %s", lf->path);
+    }
+    lockfile_free(lf);
+    spm_free(source);
+    spm_free(now);
+
+    log_info("Linked %s.", skill->name);
+
+    spm_free(canonical_link);
+    spm_free(canonical_target);
+    skill_free(skill);
+    agent_list_free(agents);
+    return 0;
+}
+
 static char *create_temp_dir(void) {
     char *tmp = get_temp_dir();
     char *template = path_join(tmp, "rosie-XXXXXX");
@@ -164,6 +330,14 @@ int install_package(const InstallOptions *opts) {
     PackageSpec *spec = package_spec_parse(opts->spec);
     if (!spec) {
         return -1;
+    }
+
+    // Local-path install: skip the entire download/extract pipeline and just
+    // create symlinks pointing at the user's working tree.
+    if (spec->is_local) {
+        int rc = install_local(spec->local_path, opts);
+        package_spec_free(spec);
+        return rc;
     }
 
     log_info("Installing %s/%s...", spec->owner, spec->repo);
@@ -575,6 +749,29 @@ int install_from_lockfile(const InstallOptions *base_opts) {
 
     int ok = 0, fail = 0;
     for (int i = 0; i < count; i++) {
+        // file:// entries point at a tracked working-tree directory. Don't
+        // run them through install_package — there's nothing to download and
+        // no sensible "spec_str" to feed back into the parser. Just relink.
+        if (source_is_local(snap[i].source)) {
+            const char *canonical_rel = source_local_path(snap[i].source);
+            if (!dir_exists(canonical_rel)) {
+                log_info("warning: %s source missing locally, skipping (%s)",
+                         snap[i].skill_name, canonical_rel);
+                continue;
+            }
+            InstallOptions opts = *base_opts;
+            opts.spec = NULL;
+            opts.skill_name = snap[i].skill_name;
+            opts.yes = true;
+            opts.list_only = false;
+            opts.global = false;
+            opts.override_pinned = false;
+            opts.pinned = false;
+            if (install_local(canonical_rel, &opts) == 0) ok++;
+            else fail++;
+            continue;
+        }
+
         char *spec_str = build_spec_string(snap[i].source, snap[i].ref);
 
         InstallOptions opts = *base_opts;
@@ -618,6 +815,14 @@ int update_skills(const InstallOptions *base_opts, const char *only_skill) {
     for (int i = 0; i < count; i++) {
         if (only_skill && strcmp(snap[i].skill_name, only_skill) != 0) continue;
         matched++;
+
+        // Local links track the working tree directly — there's no upstream
+        // to re-resolve. Treat them as always up to date.
+        if (source_is_local(snap[i].source)) {
+            log_info("%s: local link, no update needed", snap[i].skill_name);
+            unchanged++;
+            continue;
+        }
 
         // Build a spec from the recorded source so we can resolve against it.
         // The ref doesn't matter for resolution; resolve_* takes only owner/repo.
@@ -712,13 +917,16 @@ int list_installed_skills(void) {
     printf("Installed skills (%s):\n", lf->path);
     for (int i = 0; i < lf->count; i++) {
         const LockEntry *e = &lf->entries[i];
-        if (use_color) {
-            printf("  \033[1;34m%s\033[0m  %s@%s  %s\n",
-                   e->skill_name, e->source, e->ref,
-                   e->pinned ? "(pinned)" : "");
+        const char *name_open = use_color ? "\033[1;34m" : "";
+        const char *name_close = use_color ? "\033[0m" : "";
+        if (source_is_local(e->source)) {
+            printf("  %s%s%s  %s  (linked)\n",
+                   name_open, e->skill_name, name_close,
+                   source_local_path(e->source));
         } else {
-            printf("  %s  %s@%s  %s\n",
-                   e->skill_name, e->source, e->ref,
+            printf("  %s%s%s  %s@%s  %s\n",
+                   name_open, e->skill_name, name_close,
+                   e->source, e->ref,
                    e->pinned ? "(pinned)" : "");
         }
     }

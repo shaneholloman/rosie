@@ -3,7 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <limits.h>
 #include <curl/curl.h>
+
+#define LOCAL_SOURCE_PREFIX "file://"
+#define LOCAL_SOURCE_PREFIX_LEN 7
 
 static bool curl_initialized = false;
 
@@ -26,14 +31,124 @@ void download_cleanup(void) {
     }
 }
 
+bool source_is_local(const char *source) {
+    if (!source) return false;
+    return strncmp(source, LOCAL_SOURCE_PREFIX, LOCAL_SOURCE_PREFIX_LEN) == 0;
+}
+
+const char *source_local_path(const char *source) {
+    if (!source_is_local(source)) return NULL;
+    return source + LOCAL_SOURCE_PREFIX_LEN;
+}
+
+// True if the user-supplied argument should be treated as a local-path skill
+// rather than an owner/repo spec. We use leading-character cues that cannot
+// occur in a valid GitHub owner name.
+static bool looks_like_local_path(const char *spec) {
+    if (!spec || !spec[0]) return false;
+    if (strcmp(spec, ".") == 0) return true;
+    if (spec[0] == '/') return true;
+    if (spec[0] == '~' && spec[1] == '/') return true;
+    if (spec[0] == '.' && spec[1] == '/') return true;
+    if (spec[0] == '.' && spec[1] == '.' && spec[2] == '/') return true;
+    return false;
+}
+
+// Resolve a user-supplied path to a "./<rel>" form rooted at the current
+// working directory. Expands a leading "~/", canonicalises via realpath(),
+// rejects paths outside the cwd. Returns NULL on error (already logged).
+static char *canonicalize_local_path(const char *user_path) {
+    if (!user_path || !user_path[0]) return NULL;
+
+    char *expanded = NULL;
+    if (user_path[0] == '~' && user_path[1] == '/') {
+        char *home = get_home_dir();
+        if (!home) {
+            log_error("Cannot expand ~ (HOME not set)");
+            return NULL;
+        }
+        size_t len = strlen(home) + 1 + strlen(user_path + 2) + 1;
+        expanded = spm_malloc(len);
+        snprintf(expanded, len, "%s/%s", home, user_path + 2);
+        spm_free(home);
+    } else {
+        expanded = str_dup(user_path);
+    }
+
+    char *abs = realpath(expanded, NULL);
+    spm_free(expanded);
+    if (!abs) {
+        log_error("Cannot resolve path: %s", user_path);
+        return NULL;
+    }
+
+    char *cwd = getcwd(NULL, 0);
+    if (!cwd) {
+        log_error("Cannot get current directory");
+        free(abs);
+        return NULL;
+    }
+
+    size_t cwd_len = strlen(cwd);
+    bool inside = strncmp(abs, cwd, cwd_len) == 0 &&
+                  (abs[cwd_len] == '/' || abs[cwd_len] == '\0');
+
+    if (!inside) {
+        log_error("Local skill path is outside the project: %s", user_path);
+        free(abs);
+        free(cwd);
+        return NULL;
+    }
+
+    const char *rel = abs + cwd_len;
+    while (*rel == '/') rel++;
+
+    char *result;
+    if (*rel == '\0') {
+        result = str_dup(".");
+    } else {
+        size_t len = 2 + strlen(rel) + 1;
+        result = spm_malloc(len);
+        snprintf(result, len, "./%s", rel);
+    }
+
+    free(abs);
+    free(cwd);
+    return result;
+}
+
 PackageSpec *package_spec_parse(const char *spec) {
     if (!spec) return NULL;
+
+    // Detect local-path or file:// forms before treating as owner/repo.
+    const char *local_input = NULL;
+    if (source_is_local(spec)) {
+        local_input = source_local_path(spec);
+    } else if (looks_like_local_path(spec)) {
+        local_input = spec;
+    }
+
+    if (local_input) {
+        char *canonical = canonicalize_local_path(local_input);
+        if (!canonical) return NULL;
+
+        PackageSpec *ps = spm_malloc(sizeof(PackageSpec));
+        ps->owner = NULL;
+        ps->repo = NULL;
+        ps->ref = NULL;
+        ps->ref_explicit = false;
+        ps->is_local = true;
+        ps->local_path = canonical;
+        return ps;
+    }
 
     PackageSpec *ps = spm_malloc(sizeof(PackageSpec));
     ps->owner = NULL;
     ps->repo = NULL;
     ps->ref = NULL;
     ps->ref_explicit = false;
+    ps->is_local = false;
+    ps->local_path = NULL;
 
     // Make a working copy
     char *work = str_dup(spec);
@@ -79,6 +194,7 @@ void package_spec_free(PackageSpec *spec) {
     spm_free(spec->owner);
     spm_free(spec->repo);
     spm_free(spec->ref);
+    spm_free(spec->local_path);
     spm_free(spec);
 }
 
