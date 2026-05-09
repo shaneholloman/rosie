@@ -14,6 +14,7 @@ website/
 │   ├── index.html
 │   ├── styles.css
 │   ├── script.js       # built — gitignored
+│   ├── fonts/          # self-hosted JetBrains Mono (Google Fonts subsets out box-drawing chars)
 │   ├── rosie.png       # mascot
 │   ├── favicon.svg
 │   └── demo.svg        # (optional) asciinema recording — section is hidden until this exists
