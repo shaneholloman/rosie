@@ -18,8 +18,8 @@ static void print_usage(const char *prog) {
     printf("                                local directory (./path, /path, ~/path) into .agents/skills/.\n");
     printf("                                With --ref, installs the repo's README.md (or a specific\n");
     printf("                                SKILL.md via --skill) as a reference under .agents/references/\n");
-    printf("                                and indexes it in AGENTS.md (or CLAUDE.md, if that's the file\n");
-    printf("                                the project already uses).\n");
+    printf("                                and indexes it in AGENTS.md (or CLAUDE.md / GEMINI.md /\n");
+    printf("                                .github/copilot-instructions.md, whichever the project uses).\n");
     printf("                                With no args, reinstalls from .agents/rosie.lock\n");
     printf("  update [skill-name]           Re-resolve lockfile entries; reinstall those that changed\n");
     printf("  remove <skill-name>           Remove an installed skill or reference\n");

@@ -13,6 +13,8 @@
 const char *agentsmd_target_path(void) {
     if (file_exists("AGENTS.md")) return "AGENTS.md";
     if (file_exists("CLAUDE.md")) return "CLAUDE.md";
+    if (file_exists("GEMINI.md")) return "GEMINI.md";
+    if (file_exists(".github/copilot-instructions.md")) return ".github/copilot-instructions.md";
     return "AGENTS.md";
 }
 

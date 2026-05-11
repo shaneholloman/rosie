@@ -158,8 +158,9 @@ outperformed `SKILL.md`-style progressive disclosure on their evals.
 
 A reference is a single markdown doc copied into
 `.agents/references/<name>/REFERENCE.md` and indexed by title in a Rosie-managed
-`<references>` block in your project's agent-instructions file. Rosie picks
-`AGENTS.md` if it exists, otherwise `CLAUDE.md`, otherwise creates `AGENTS.md`.
+`<references>` block in your project's agent-instructions file. Detection order:
+`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`; if
+none exist, Rosie creates `AGENTS.md`.
 
 ```bash
 rosie install vercel/next.js --ref

@@ -307,6 +307,14 @@ pre.term-block {
   margin: 0 0 1rem;
   color: var(--fg-dim);
 }
+
+.sub-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--teal);
+  margin: 1.5rem 0 .5rem;
+}
+.sub-label::before { content: "# "; color: var(--comment); }
 .lockfile-intro code {
   color: var(--fg);
   background: rgba(127, 214, 210, .08);

@@ -6,6 +6,7 @@
   "scripts": {
     "build": "esbuild src/script.js --bundle --format=esm --minify --sourcemap --outfile=public/script.js",
     "watch": "esbuild src/script.js --bundle --format=esm --sourcemap --outfile=public/script.js --watch",
+    "dev": "wrangler dev",
     "deploy": "npm run build && npx wrangler deploy"
   },
   "dependencies": {

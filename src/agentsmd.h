@@ -7,7 +7,9 @@
 // references block into. Detection order:
 //   1. AGENTS.md if it exists in the current directory
 //   2. CLAUDE.md if it exists
-//   3. AGENTS.md (default — created on first write)
+//   3. GEMINI.md if it exists
+//   4. .github/copilot-instructions.md if it exists
+//   5. AGENTS.md (default — created on first write)
 // Returns a pointer to a static string; do not free.
 const char *agentsmd_target_path(void);
 
