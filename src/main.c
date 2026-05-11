@@ -7,7 +7,7 @@
 #include "agent.h"
 #include "util.h"
 
-#define ROSIE_VERSION "0.5.3"
+#define ROSIE_VERSION "0.5.4"
 
 static void print_usage(const char *prog) {
     printf("rosie - A robot helper for agent skills v%s\n\n", ROSIE_VERSION);
