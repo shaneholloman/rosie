@@ -3,7 +3,7 @@
   "name": "rosie",
   "compatibility_date": "2026-04-08",
   "assets": {
-    "directory": "./public",
+    "directory": "./dist",
     "not_found_handling": "404-page"
   },
   "routes": [

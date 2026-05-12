@@ -1,0 +1,41 @@
+---
+// Site shell: doctype, head, terminal chrome around the page content.
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>rosie — a robot helper for agent skills</title>
+  <meta name="description" content="A fast, cross-platform package manager for AI agent skills. Think npm, but for skills." />
+  <meta property="og:title" content="rosie — a robot helper for agent skills" />
+  <meta property="og:description" content="A fast, cross-platform package manager for AI agent skills." />
+  <meta property="og:url" content="https://rosie.libs.technology/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="/fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="terminal">
+    <header class="titlebar">
+      <div class="dots" aria-hidden="true">
+        <span class="dot dot-red"></span>
+        <span class="dot dot-yellow"></span>
+        <span class="dot dot-green"></span>
+      </div>
+      <div class="title">matthewp/rosie — main</div>
+      <div class="titlebar-spacer" aria-hidden="true"></div>
+    </header>
+
+    <main class="content">
+      <slot />
+    </main>
+  </div>
+
+  <script>
+    // Astro+Vite bundles this on build (zebra signals + tab/copy interactivity).
+    import "../script.js";
+  </script>
+</body>
+</html>
