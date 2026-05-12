@@ -133,12 +133,105 @@ EOF
   </div>
 
   <div class="tab-panel" data-panel="src">
-    <p class="panel-note"><span class="comment"># requires libcurl, libarchive, pkg-config</span></p>
+    <p class="panel-note"><span class="comment"># install deps for your platform first</span></p>
+<pre class="term-block"><span class="comment"># debian / ubuntu</span>
+<span class="prompt">$</span> sudo apt install libcurl4-openssl-dev libarchive-dev pkg-config
+
+<span class="comment"># macos</span>
+<span class="prompt">$</span> brew install curl libarchive pkg-config
+
+<span class="comment"># arch</span>
+<span class="prompt">$</span> sudo pacman -S curl libarchive pkgconf</pre>
+
+    <p class="panel-note"><span class="comment"># then clone, build, install (defaults to /usr/local/bin)</span></p>
 <pre class="term-block"><span class="prompt">$</span> git clone https://github.com/matthewp/rosie
 <span class="prompt">$</span> cd rosie
 <span class="prompt">$</span> make
 <span class="prompt">$</span> sudo make install<button class="copy-btn" data-copy>[ copy ]</button></pre>
   </div>
+</section>
+
+<div class="section-rule" id="cli">
+  <span class="dashes">──</span>
+  <a href="#cli" class="label">cli</a>
+  <span class="dashes-grow"></span>
+</div>
+
+<section class="cli">
+  <p class="lockfile-intro">the basic verbs: <code>install</code>, <code>update</code>, <code>remove</code>, <code>list</code>, <code>agents</code>. flags map one-to-one with the <a href="#js-api">js api</a>.</p>
+
+```bash
+# install latest semver tag from a repo (or default branch if no tags)
+$ rosie install vercel-labs/agent-skills
+
+# specific skill from a repo
+$ rosie install anthropics/skills pdf
+
+# pin to a branch or tag — recorded as `pin` in the lockfile
+$ rosie install owner/repo@v1.0.0
+$ rosie install owner/repo@develop
+
+# scope to specific agents (repeatable)
+$ rosie install owner/repo -a claude -a cursor
+
+# install a local directory as a skill (symlinked, travels with your repo)
+$ rosie install ./my-custom-skill
+
+# reinstall everything in .agents/rosie.lock — useful on a fresh clone
+$ rosie install
+
+# update lockfile entries
+$ rosie update                      # all entries
+$ rosie update slack-gif-creator    # one entry
+
+# list installed skills/refs in this project
+$ rosie list
+
+# list what's available in a remote repo (without installing)
+$ rosie list owner/repo
+
+# remove an installed skill or reference
+$ rosie remove skill-name
+$ rosie remove skill-name -a claude   # from a specific agent
+
+# show detected + supported agents
+$ rosie agents
+
+# skip the confirmation prompt
+$ rosie install owner/repo -y
+```
+
+  <h3 class="sub-label">flags</h3>
+  <ul class="bullet-list">
+    <li><span class="bullet">▸</span><strong class="key">-a, --agent &lt;name&gt;</strong><span class="val">install to a specific agent (repeatable)</span></li>
+    <li><span class="bullet">▸</span><strong class="key">-g, --global</strong><span class="val">install globally to <code>~/.&lt;agent&gt;/skills/</code> (copies files)</span></li>
+    <li><span class="bullet">▸</span><strong class="key">-l, --local</strong><span class="val">install locally with symlinks (default)</span></li>
+    <li><span class="bullet">▸</span><strong class="key">-r, --ref</strong><span class="val">install as a reference (README, or a SKILL.md via <code>--skill</code>)</span></li>
+    <li><span class="bullet">▸</span><strong class="key">-s, --skill &lt;name&gt;</strong><span class="val">with <code>--ref</code>: install a specific SKILL.md</span></li>
+    <li><span class="bullet">▸</span><strong class="key">-n, --name &lt;name&gt;</strong><span class="val">with <code>--ref</code>: override the default install name</span></li>
+    <li><span class="bullet">▸</span><strong class="key">-N, --npm</strong><span class="val">with <code>--ref</code>: source from <code>node_modules/&lt;pkg&gt;/</code></span></li>
+    <li><span class="bullet">▸</span><strong class="key">-I, --include &lt;path&gt;</strong><span class="val">with <code>--npm</code>: file or directory to include (repeatable; replaces default scope)</span></li>
+    <li><span class="bullet">▸</span><strong class="key">--cwd &lt;path&gt;</strong><span class="val">run as if started from <code>&lt;path&gt;</code> (mirrors <a href="#js-api">js api</a>'s <code>cwd</code> option)</span></li>
+    <li><span class="bullet">▸</span><strong class="key">--no-lockfile</strong><span class="val">don't read or write <code>.agents/rosie.lock</code></span></li>
+    <li><span class="bullet">▸</span><strong class="key">-y, --yes</strong><span class="val">skip the confirmation prompt</span></li>
+    <li><span class="bullet">▸</span><strong class="key">-v, --verbose</strong><span class="val">verbose output</span></li>
+  </ul>
+
+  <h3 class="sub-label">local vs global</h3>
+  <p class="lockfile-intro">two install modes; default is local. global is opt-in via <code>--global</code>.</p>
+
+  <ul class="bullet-list">
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">local (default)</strong>
+      <span class="val">canonical copy at <code>.agents/skills/&lt;name&gt;/</code>; symlinks from each agent's local dir (<code>.claude/skills/</code>, <code>.cursor/skills/</code>, …) into it. project-scoped. check the lockfile into git for reproducible installs.</span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">global (<code>--global</code>)</strong>
+      <span class="val">files copied directly into <code>~/.&lt;agent&gt;/skills/&lt;name&gt;/</code> for every detected agent. shared across projects, no lockfile, no symlinks.</span>
+    </li>
+  </ul>
 </section>
 
 <div class="section-rule" id="lockfile">
@@ -151,10 +244,14 @@ EOF
   <p class="lockfile-intro">every install is recorded in <code>.agents/rosie.lock</code> — small, line-oriented, diffs cleanly. check it into git.</p>
 
 <pre class="term-block"><span class="prompt">$</span> cat .agents/rosie.lock
-<span class="lock-name">slack-gif-creator</span> anthropics/skills    main   <span class="lock-sha">5128e186…</span> <span class="comment">2026-05-02T14:32:18Z</span> <span class="lock-auto">auto</span>
-<span class="lock-name">theme-factory</span>     anthropics/skills    v1.0.0 <span class="lock-sha">a1b2c3d4…</span> <span class="comment">2026-05-02T14:35:01Z</span> <span class="lock-pin">pin</span>
-<span class="lock-name">vite</span>              antfu/skills         main   <span class="lock-sha">f4d2e9c1…</span> <span class="comment">2026-05-02T14:38:44Z</span> <span class="lock-auto">auto</span>
-<span class="lock-name">house-style</span>       file://./house-style -      -         <span class="comment">2026-05-02T14:41:09Z</span> <span class="lock-pin">pin</span></pre>
+<span class="comment"># rosie-lock v1</span>
+<span class="lock-name">slack-gif-creator</span> anthropics/skills    main   <span class="lock-sha">5128e186…</span> <span class="comment">2026-05-02T14:32:18Z</span> <span class="lock-auto">auto</span> skill
+<span class="lock-name">theme-factory</span>     anthropics/skills    v1.0.0 <span class="lock-sha">a1b2c3d4…</span> <span class="comment">2026-05-02T14:35:01Z</span> <span class="lock-pin">pin</span>  skill
+<span class="lock-name">vite</span>              antfu/skills         main   <span class="lock-sha">f4d2e9c1…</span> <span class="comment">2026-05-02T14:38:44Z</span> <span class="lock-auto">auto</span> skill
+<span class="lock-name">house-style</span>       file://./house-style -      -         <span class="comment">2026-05-02T14:41:09Z</span> <span class="lock-pin">pin</span>  skill
+<span class="lock-name">vercel-next.js</span>    vercel/next.js       v15.1.0 <span class="lock-sha">9f8e7d6c…</span> <span class="comment">2026-05-09T10:00:00Z</span> <span class="lock-auto">auto</span> ref</pre>
+
+  <p class="lockfile-intro">one line per entry, space-separated: <code>&lt;name&gt; &lt;source&gt; &lt;ref&gt; &lt;sha&gt; &lt;installed-at&gt; &lt;pin|auto&gt; &lt;skill|ref&gt;</code>. <code>rosie-lock v1</code> is the header marker; legacy v0 files (no header, skill-only) are read transparently and rewritten on the next mutating command.</p>
 
   <ul class="bullet-list">
     <li>
@@ -169,8 +266,23 @@ EOF
     </li>
     <li>
       <span class="bullet">▸</span>
-      <strong class="key">local</strong>
-      <span class="val"><code>rosie install ./my-skill</code> writes a <code>file://</code> entry · hand-authored skills in your repo travel with it</span>
+      <strong class="key">skill</strong>
+      <span class="val">directory installed into <code>.agents/skills/</code> with per-agent symlinks</span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">ref</strong>
+      <span class="val">single markdown doc indexed in the project's <code>AGENTS.md</code> / <code>CLAUDE.md</code> / etc.</span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">file://</strong>
+      <span class="val"><code>rosie install ./my-skill</code> writes a <code>file://</code> source · hand-authored skills in your repo travel with it</span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">npm:</strong>
+      <span class="val"><code>--npm</code> refs use <code>npm:&lt;pkg&gt;#&lt;file&gt;</code> as the source · sha column holds the installed npm version</span>
     </li>
   </ul>
 </section>
@@ -498,6 +610,119 @@ await rosie.install('anthropics/skills', { lockfile: false });
       <strong class="key">cli still works the same</strong>
       <span class="val"><code>npx rosie-skills install …</code> uses the native binary when available, falls back to wasm otherwise</span>
     </li>
+  </ul>
+</section>
+
+<div class="section-rule" id="skill-format">
+  <span class="dashes">──</span>
+  <a href="#skill-format" class="label">skill format</a>
+  <span class="dashes-grow"></span>
+</div>
+
+<section class="skill-format">
+  <p class="lockfile-intro">a skill is a directory with a <code>SKILL.md</code> at its root. yaml frontmatter declares the name and description; everything else is free-form.</p>
+
+```
+my-skill/
+├── SKILL.md          # required — agent instructions
+├── scripts/          # optional — automation helpers
+└── references/       # optional — supporting docs
+```
+
+```md
+---
+name: my-skill
+description: A brief description of what this skill does
+---
+
+# My Skill
+
+Instructions for the AI agent go here…
+```
+
+  <ul class="bullet-list">
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">discovery</strong>
+      <span class="val">rosie searches <code>skills/</code>, <code>.agents/skills/</code>, <code>.claude/skills/</code>, and other known paths for <code>SKILL.md</code> files</span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">name + description</strong>
+      <span class="val">read from frontmatter · used as the install name and shown in <code>rosie list</code></span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">extra files</strong>
+      <span class="val"><code>scripts/</code>, <code>references/</code>, anything else in the directory travels with the skill — the agent can use them</span>
+    </li>
+  </ul>
+</section>
+
+<div class="section-rule" id="how-it-works">
+  <span class="dashes">──</span>
+  <a href="#how-it-works" class="label">how it works</a>
+  <span class="dashes-grow"></span>
+</div>
+
+<section class="how-it-works">
+  <p class="lockfile-intro">a single C program (also compiled to wasm for the npm package). what happens when you run <code>rosie install owner/repo</code>:</p>
+
+<pre class="term-block">rosie install owner/repo
+   │
+   ├─▶ parse package spec  (owner/repo[@ref][#skill])
+   │
+   ├─▶ resolve ref         (latest semver tag · branch · pinned ref)
+   │
+   ├─▶ download tarball    (libcurl native · fetch in wasm)
+   │   https://github.com/owner/repo/archive/refs/heads/main.tar.gz
+   │
+   ├─▶ extract             (libarchive)
+   │
+   ├─▶ discover skills     (walk for SKILL.md, parse YAML frontmatter)
+   │
+   ├─▶ detect agents       (check ~/.claude, ~/.cursor, …)
+   │
+   └─▶ install
+       local:  copy to .agents/skills/, symlink to each agent
+       global: copy directly to each ~/.&lt;agent&gt;/skills/</pre>
+
+  <ul class="bullet-list">
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">native binary</strong>
+      <span class="val">single small executable · no node, no python, no jvm runtime · ships for linux-x64, darwin-arm64, freebsd-x64</span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">wasm fallback</strong>
+      <span class="val">inlined into the npm package · works on every platform node runs · powers the <a href="#js-api">js api</a></span>
+    </li>
+    <li>
+      <span class="bullet">▸</span>
+      <strong class="key">deps</strong>
+      <span class="val">libcurl + libarchive (system on linux/freebsd · static on macos · emscripten ports + node fetch in wasm)</span>
+    </li>
+  </ul>
+</section>
+
+<div class="section-rule" id="alternatives">
+  <span class="dashes">──</span>
+  <a href="#alternatives" class="label">alternatives</a>
+  <span class="dashes-grow"></span>
+</div>
+
+<section class="alternatives">
+  <p class="lockfile-intro">other tools in the agent-skills ecosystem worth a look:</p>
+
+  <ul class="bullet-list">
+    <li><span class="bullet">▸</span><strong class="key"><a href="https://skills.sh">skills</a></strong><span class="val">vercel's official skills cli · <code>npx skills</code> · node</span></li>
+    <li><span class="bullet">▸</span><strong class="key"><a href="https://github.com/vercel-labs/add-skill">add-skill</a></strong><span class="val">vercel labs skill installer · node</span></li>
+    <li><span class="bullet">▸</span><strong class="key"><a href="https://paks.stakpak.dev/">paks</a></strong><span class="val">stakpak's agent skills manager</span></li>
+    <li><span class="bullet">▸</span><strong class="key"><a href="https://github.com/kasperjunge/agent-resources">agr</a></strong><span class="val">agent resources manager · python</span></li>
+    <li><span class="bullet">▸</span><strong class="key"><a href="https://github.com/danielmeppiel/apm">apm</a></strong><span class="val">agent package manager</span></li>
+    <li><span class="bullet">▸</span><strong class="key"><a href="https://lib.rs/crates/skill-manager">skill-manager</a></strong><span class="val">cli for managing ai assistant skills · rust</span></li>
+    <li><span class="bullet">▸</span><strong class="key"><a href="https://pypi.org/project/agent-skills-cli/">agent-skills-cli</a></strong><span class="val">agent skills cli · python</span></li>
   </ul>
 </section>
 

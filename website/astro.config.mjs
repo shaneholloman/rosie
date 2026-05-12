@@ -2,6 +2,10 @@ import { defineConfig } from 'astro/config';
 
 export default defineConfig({
   site: 'https://rosie.libs.technology',
+  server: {
+    // 2062 — the year The Jetsons is set in. rosie was Rosey in the show.
+    port: 2062,
+  },
   // Default static output; dist/ is what we publish via wrangler.
   markdown: {
     shikiConfig: {
