@@ -7,6 +7,7 @@
 #include "resolve.h"
 #include "agentsmd.h"
 #include "npm.h"
+#include "link.h"
 #include "util.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -81,8 +82,7 @@ int install_skill_local(const Skill *skill, const Agent *agent, const char *cano
 
     log_debug("Symlink: %s -> %s", link_path, relative_target);
 
-    if (symlink(relative_target, link_path) != 0) {
-        log_error("Failed to create symlink: %s", link_path);
+    if (rosie_create_link(relative_target, link_path, true) != 0) {
         spm_free(link_path);
         spm_free(relative_target);
         return -1;
@@ -220,8 +220,7 @@ static int install_local(const char *canonical_rel, const InstallOptions *opts) 
             if (n > 0 && strcmp(buf, canonical_target) == 0) {
                 log_debug("Canonical symlink already correct: %s", canonical_link);
             } else if (unlink(canonical_link) != 0 ||
-                       symlink(canonical_target, canonical_link) != 0) {
-                log_error("Failed to update symlink: %s", canonical_link);
+                       rosie_create_link(canonical_target, canonical_link, true) != 0) {
                 spm_free(canonical_link);
                 spm_free(canonical_target);
                 skill_free(skill);
@@ -237,9 +236,7 @@ static int install_local(const char *canonical_rel, const InstallOptions *opts) 
             agent_list_free(agents);
             return -1;
         }
-    } else if (symlink(canonical_target, canonical_link) != 0) {
-        log_error("Failed to create symlink: %s -> %s",
-                  canonical_link, canonical_target);
+    } else if (rosie_create_link(canonical_target, canonical_link, true) != 0) {
         spm_free(canonical_link);
         spm_free(canonical_target);
         skill_free(skill);
@@ -437,8 +434,7 @@ static int npm_install_one(const char *name, const char *pkg, const char *rel_pa
     }
 
     log_debug("Symlink: %s -> %s", link_path, target);
-    if (symlink(target, link_path) != 0) {
-        log_error("Failed to create symlink: %s", link_path);
+    if (rosie_create_link(target, link_path, false) != 0) {
         spm_free(target);
         spm_free(link_path);
         spm_free(ref_dir);

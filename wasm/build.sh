@@ -49,8 +49,8 @@ fi
 # blocks drop out. wasm/http-stub.c supplies the missing HTTP entry points.
 SRCS=(
   src/agent.c src/agentsmd.c src/archive.c src/download.c
-  src/install.c src/lockfile.c src/main.c src/npm.c src/resolve.c
-  src/skill.c src/util.c
+  src/install.c src/link.c src/lockfile.c src/main.c src/npm.c
+  src/resolve.c src/skill.c src/util.c
   wasm/api.c wasm/http-stub.c
 )
 

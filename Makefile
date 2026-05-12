@@ -56,7 +56,8 @@ wasm-clean:
 
 # Dependencies (auto-generated would be better, but this works)
 $(BUILD_DIR)/main.o: $(SRC_DIR)/main.c $(SRC_DIR)/install.h $(SRC_DIR)/agent.h $(SRC_DIR)/util.h
-$(BUILD_DIR)/install.o: $(SRC_DIR)/install.c $(SRC_DIR)/install.h $(SRC_DIR)/download.h $(SRC_DIR)/archive.h $(SRC_DIR)/skill.h $(SRC_DIR)/agent.h $(SRC_DIR)/lockfile.h $(SRC_DIR)/resolve.h $(SRC_DIR)/agentsmd.h $(SRC_DIR)/npm.h $(SRC_DIR)/util.h
+$(BUILD_DIR)/install.o: $(SRC_DIR)/install.c $(SRC_DIR)/install.h $(SRC_DIR)/download.h $(SRC_DIR)/archive.h $(SRC_DIR)/skill.h $(SRC_DIR)/agent.h $(SRC_DIR)/lockfile.h $(SRC_DIR)/resolve.h $(SRC_DIR)/agentsmd.h $(SRC_DIR)/npm.h $(SRC_DIR)/link.h $(SRC_DIR)/util.h
+$(BUILD_DIR)/link.o: $(SRC_DIR)/link.c $(SRC_DIR)/link.h $(SRC_DIR)/util.h
 $(BUILD_DIR)/agentsmd.o: $(SRC_DIR)/agentsmd.c $(SRC_DIR)/agentsmd.h $(SRC_DIR)/lockfile.h $(SRC_DIR)/util.h
 $(BUILD_DIR)/npm.o: $(SRC_DIR)/npm.c $(SRC_DIR)/npm.h $(SRC_DIR)/util.h
 $(BUILD_DIR)/download.o: $(SRC_DIR)/download.c $(SRC_DIR)/download.h $(SRC_DIR)/util.h
