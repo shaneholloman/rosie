@@ -54,10 +54,28 @@ find "$SOURCES" -mindepth 3 -maxdepth 3 -type d | while read -r ref_dir; do
 
     # Deterministic tar: sorted file order, fixed mtime/uid/gid/numeric.
     # Requires GNU tar (see $TAR resolution above).
-    "$TAR" --sort=name \
+    #
+    # --format=pax + globexthdr.name=pax_global_header mirrors what
+    # `git archive` (and thus GitHub's archive endpoint) emits: a
+    # pax extended global header as the first record, ahead of the
+    # actual `<repo>-<ref>/` directory entry. Without this our fixtures
+    # diverge from real GitHub tarballs and bugs like archive::root_dir
+    # picking up the wrong root never surface in the suite.
+    "$TAR" --format=pax \
+        --pax-option='globexthdr.name=pax_global_header,comment=rosie-fixture' \
+        --sort=name \
         --mtime='2025-01-01T00:00:00Z' \
         --owner=0 --group=0 --numeric-owner \
         -C "$stage" -czf "$out_tar" "$repo-$ref"
+
+    # Sanity check: confirm we actually emitted a pax_global_header so
+    # future build-script changes can't silently lose this property.
+    first_record=$(zcat "$out_tar" | head -c 100 | tr -d '\0' | head -n 1)
+    if [ "$first_record" != "pax_global_header" ]; then
+        echo "error: $out_tar first record is '$first_record', expected 'pax_global_header'" >&2
+        echo "       (the GNU tar on this system may not support --format=pax globexthdr)" >&2
+        exit 1
+    fi
 
     rm -rf "$stage"
     echo "built $out_tar"

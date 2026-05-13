@@ -119,11 +119,21 @@ pub fn root_dir(archive_path: &Path) -> Option<String> {
     let bytes = os::read(archive_path).ok()?;
     let gz = GzDecoder::new(&bytes[..]);
     let mut ar = Archive::new(gz);
-    let mut entries = ar.entries().ok()?;
-    let entry = entries.next()?.ok()?;
-    let path = entry.path().ok()?.into_owned();
-    let first = path.components().next()?;
-    Some(first.as_os_str().to_string_lossy().into_owned())
+    let entries = ar.entries().ok()?;
+    for entry in entries {
+        let entry = entry.ok()?;
+        // Skip pax extended/global headers — they're metadata, not real
+        // file entries, and their "path" is something like
+        // `pax_global_header` that would mislead callers.
+        match entry.header().entry_type() {
+            EntryType::XGlobalHeader | EntryType::XHeader => continue,
+            _ => {}
+        }
+        let path = entry.path().ok()?.into_owned();
+        let first = path.components().next()?;
+        return Some(first.as_os_str().to_string_lossy().into_owned());
+    }
+    None
 }
 
 #[cfg(test)]
